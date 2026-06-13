@@ -3,7 +3,7 @@
 #
 # Usage:
 #   1. Copy this script to your TrueNAS host.
-#   2. Run: chmod +x truenas_build_r8127_driver.sh && sudo ./truenas_build_r8127_driver.sh
+#   2. Run: sudo bash truenas_build_r8127_driver.sh
 #
 # Prerequisites:
 #   - TrueNAS SCALE 24.10+ (Electric Eel and newer) uses Docker for Apps.
@@ -13,7 +13,7 @@
 # Persistence:
 #   The driver will be lost on reboot or system update. To make it persistent:
 #   1. Copy the compiled .ko to a persistent pool:
-#      cp /tmp/r8127_build/rtl8127/r8127.ko /mnt/YOUR_POOL/scripts/
+#      cp ./r8127_build/rtl8127/r8127.ko /mnt/YOUR_POOL/scripts/
 #   2. Go to System Settings -> Advanced -> Init/Shutdown Scripts.
 #   3. Add a 'Post Init' script with command: insmod /mnt/YOUR_POOL/scripts/r8127.ko
 #
@@ -26,20 +26,20 @@
 #   - This script was developed with assistance from AI tools.
 #   - Review the script and decide whether you trust it, rather than running it blindly.
 #   - No warranty is provided; use at your own risk.
-#   - I have tested on my TrueNAS SCALE 25.10.1 box with a Realtek RTL8127 NIC where it works as intended.
+#   - I have tested on my TrueNAS SCALE 25.10.4 box with a Realtek RTL8127 NIC where it works as intended.
 
 set -euo pipefail
 
-BUILD_DIR="${BUILD_DIR:-/tmp/r8127_build}"
-IMAGE_NAME="${IMAGE_NAME:-r8127-builder}"
+KERNEL_VERSION=$(uname -r)
+# Docker image tags cannot contain "+" characters. Replace "+" with "_" to ensure validity.
+IMAGE_TAG=$(printf '%s' "$KERNEL_VERSION" | tr '+' '_')
+BUILD_DIR="${BUILD_DIR:-$PWD/r8127_build}"
+IMAGE_NAME="${IMAGE_NAME:-r8127-builder:$IMAGE_TAG}"
 REPO_URL="${REPO_URL:-https://github.com/openwrt/rtl8127.git}"
 DRIVER_REF="${DRIVER_REF:-}"
 REBUILD_IMAGE="${REBUILD_IMAGE:-0}"
 
-# Cleanup is intentionally disabled by default so you can copy the built .ko.
-# Set CLEANUP=1 to delete the build directory on exit.
-# Set CLEANUP_IMAGE=1 to also delete the builder image on exit.
-CLEANUP="${CLEANUP:-0}"
+# Set CLEANUP_IMAGE=1 to delete the builder image on exit.
 CLEANUP_IMAGE="${CLEANUP_IMAGE:-0}"
 
 HEADERS_DIR=""
@@ -57,22 +57,15 @@ die() {
 cleanup() {
     local exit_code=$?
 
-    if [ "$CLEANUP" -eq 1 ] && [ -d "$BUILD_DIR" ]; then
-        log "--------------------------------------------------"
-        log "Cleaning up build directory: $BUILD_DIR"
-        rm -rf "$BUILD_DIR"
-    fi
-
     if [ "$CLEANUP_IMAGE" -eq 1 ] && docker image inspect "$IMAGE_NAME" &> /dev/null; then
         log "--------------------------------------------------"
         log "Cleaning up Docker image: $IMAGE_NAME"
         docker rmi "$IMAGE_NAME" > /dev/null 2>&1 || true
     fi
 
-    if [ "$exit_code" -eq 0 ] && [ "$CLEANUP" -ne 1 ]; then
+    if [ "$exit_code" -eq 0 ]; then
         log "--------------------------------------------------"
         log "Build artifacts kept at: $BUILD_DIR"
-        log "(Set CLEANUP=1 to delete build artifacts automatically.)"
     fi
 }
 trap cleanup EXIT
@@ -94,9 +87,7 @@ check_requirements() {
     fi
 
     # 3. Check for kernel headers
-    local kernel_version
-    kernel_version=$(uname -r)
-    local headers_path="/usr/src/linux-headers-$kernel_version"
+    local headers_path="/usr/src/linux-headers-$KERNEL_VERSION"
     
     # Fallback to the production headers if the specific version link is missing
     [ ! -d "$headers_path" ] && headers_path="/usr/src/linux-headers-truenas-production-amd64"
