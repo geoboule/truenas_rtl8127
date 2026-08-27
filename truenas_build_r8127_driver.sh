@@ -121,7 +121,7 @@ prepare_build_env() {
 
     log "Creating build environment Dockerfile..."
     cat <<EOF > Dockerfile
-FROM debian:bookworm
+FROM debian:trixie
 RUN apt-get update && apt-get install -y build-essential bc kmod libelf-dev flex bison && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 EOF
